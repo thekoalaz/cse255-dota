@@ -1,4 +1,4 @@
-import numpy
+﻿import numpy
 
 from collections import namedtuple
 from collections import defaultdict
@@ -12,8 +12,7 @@ LOGGER.setLevel(utils.logger.DEBUG)
 def run(data):
     radiant_wins = 0
     side = {}
-    PerMinuteInfo = namedtuple("PerMinuteInfo", ("gpm", "xpm", "kpm"))
-    durations = []
+    PerMinuteInfo = namedtuple("PerMinuteInfo", ("gpm", "xpm", "kpm", "duration"))
 
     direInfos = []
     radiantInfos = []
@@ -21,9 +20,8 @@ def run(data):
     differenceInfos = []
 
     for datum in data:
-        duration = datum['duration']
-        durations.append(duration / 60)
-        if duration == 0:
+        duration_in_min = datum['duration'] / 60
+        if duration_in_min == 0:
             LOGGER.error("Duration was 0.")
             continue
 
@@ -36,25 +34,27 @@ def run(data):
             if player['side'] == 1:
                 dire_info[0] += player['gold_per_min']
                 dire_info[1] += player['xp_per_min']
-                dire_info[2] += player['kills'] / duration
+                dire_info[2] += player['kills'] / duration_in_min
             else:
                 radiant_info[0] += player['gold_per_min']
                 radiant_info[1] += player['xp_per_min']
-                radiant_info[2] += player['kills'] / duration
-        direInfo = PerMinuteInfo(gpm = dire_info[0], xpm = dire_info[1], kpm = dire_info[2])
-        radiantInfo = PerMinuteInfo(gpm = radiant_info[0], xpm = radiant_info[1], kpm = radiant_info[2])
+                radiant_info[2] += player['kills'] / duration_in_min
+        direInfo = PerMinuteInfo(gpm = dire_info[0], xpm = dire_info[1], kpm = dire_info[2], duration = duration_in_min)
+        radiantInfo = PerMinuteInfo(gpm = radiant_info[0], xpm = radiant_info[1], kpm = radiant_info[2], duration = duration_in_min)
         direInfos.append(direInfo)
         radiantInfos.append(radiantInfo)
 
         differenceInfo = PerMinuteInfo(gpm = radiantInfo.gpm - direInfo.gpm,
                                        xpm = radiantInfo.xpm - direInfo.xpm,
-                                       kpm = radiantInfo.kpm - direInfo.kpm)
+                                       kpm = radiantInfo.kpm - direInfo.kpm,
+                                       duration = duration_in_min)
         differenceInfos.append((differenceInfo, datum['radiant_win']))
 
 
     total_games = len(data)
     radiant_win_rate = radiant_wins / total_games
     LOGGER.info("Radiant win rate: %f" % radiant_win_rate)
+    durations = [info[0].duration for info in differenceInfos]
     LOGGER.info("Match duration: Mean: %f, StdDev: %f" % (numpy.mean(durations), numpy.std(durations)) )
 
     radiant_gpms = [info.gpm for info in radiantInfos]
@@ -70,8 +70,10 @@ def run(data):
     dire_kpms = [info.kpm for info in direInfos]
     LOGGER.info("Dire kpm: Mean: %f, StdDev:%f" % (numpy.mean(dire_kpms), numpy.std(dire_kpms)) )
 
+    return radiantInfos, direInfos, differenceInfos
+
 if __name__ == '__main__':
     LOGGER.debug("Reading data")
     data = utils.jsonHelper.loadData("data/matches.json")
-    LOGGER.debug("Done reading data")
+    LOGGER.debug("Done reading data of length: %d" % len(data))
     run(data)
