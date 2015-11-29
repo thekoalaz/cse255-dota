@@ -3,6 +3,11 @@
 from collections import namedtuple
 from collections import defaultdict
 
+import matplotlib
+MATPLOT_EXTENSION = 'svg'
+matplotlib.use(MATPLOT_EXTENSION)
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from sklearn import linear_model
 from sklearn.ensemble import RandomForestClassifier
 
@@ -16,9 +21,10 @@ class PerMinutePredictor(object):
     PerMinuteInfo = namedtuple("PerMinuteInfo", ("gpm", "xpm", "kpm", "duration"))
 
     def __init__(self, filename):
+        LOGGER.horizontal_rule()
         LOGGER.debug("Reading data")
         self.data = utils.jsonHelper.loadData(filename)
-        LOGGER.debug("Done reading data of length: %d" % len(self.data))
+        LOGGER.info("Done reading data of length: %d" % len(self.data))
 
         self.direInfos = []
         self.radiantINfos = []
@@ -27,9 +33,12 @@ class PerMinutePredictor(object):
 
         self.count()
         self.stats()
+        self.plot()
         self.predict()
 
     def count(self):
+        LOGGER.horizontal_rule()
+        LOGGER.debug("Counting...")
         for datum in self.data:
             duration_in_min = datum['duration'] / 60
             if duration_in_min == 0:
@@ -62,6 +71,7 @@ class PerMinutePredictor(object):
             self.differenceInfos.append((differenceInfo, datum['radiant_win']))
 
         self.total_games = len(self.data)
+        LOGGER.debug("Done counting")
 
     def stats(self):
         radiant_win_rate = self.radiant_wins / self.total_games
@@ -82,6 +92,39 @@ class PerMinutePredictor(object):
         dire_kpms = [info.kpm for info in self.direInfos]
         LOGGER.info("Dire kpm: Mean: %f, StdDev:%f" % (numpy.mean(dire_kpms), numpy.std(dire_kpms)) )
 
+
+    def plot(self):
+        def regression_plot(savename, xs, ys):
+            def clamp(val):
+                return max(min(val, 1), 0)
+
+            Xs = [(x,) for x in xs]
+            clf = linear_model.LogisticRegression().fit(Xs, ys)
+            sparse_xs = numpy.sort(numpy.array(xs)[0:-1:1000])
+            sparse_ys = [1/ (1 + numpy.exp(-(clf.intercept_[0] + clf.coef_[0][0] * x))) for x in sparse_xs] 
+
+            figure = plt.figure(figsize=(10,10))
+            plt.subplots_adjust(top=0.85)
+            plt.ylim(-0.1,1.1)
+            plt.scatter(xs, ys, marker='.')
+            plt.plot(sparse_xs, sparse_ys, linewidth = 1)
+            plt.savefig(savename + '.' + MATPLOT_EXTENSION)
+            figure.clf()
+            
+
+        LOGGER.horizontal_rule()
+        LOGGER.debug("Plotting...")
+        results = [1 if info[1] else 0 for info in self.differenceInfos]
+        gpm_diffs = [info[0].gpm for info in self.differenceInfos]
+        xpm_diffs = [info[0].xpm for info in self.differenceInfos]
+        kpm_diffs = [info[0].kpm for info in self.differenceInfos]
+
+        regression_plot('gpm', gpm_diffs, results)
+        regression_plot('xpm', xpm_diffs, results)
+        regression_plot('kpm', kpm_diffs, results)
+
+        LOGGER.debug("Done plotting.")
+
     def predict(self):
         def results(y_test, predictions):
             accuracy = 0
@@ -90,11 +133,12 @@ class PerMinutePredictor(object):
                     accuracy += 1
             mse = numpy.mean((y_test - predictions) ** 2)
             LOGGER.info("MSE: %f" % mse)
-            accuracy = 1 / len(y_test)
+            accuracy = accuracy / len(y_test)
             LOGGER.info("Accuracy: %f" % accuracy)
 
-        train_size = round(len(self.differenceInfos) * 0.8)
-        validation_size = round(len(self.differenceInfos) * 0.1)
+        LOGGER.horizontal_rule()
+        train_size = round(len(self.differenceInfos) * 0.50)
+        validation_size = round(len(self.differenceInfos) * 0.25)
 
         LOGGER.debug("Train size: %d" % train_size)
         LOGGER.debug("Validation size: %d" % validation_size)
@@ -112,20 +156,21 @@ class PerMinutePredictor(object):
         X_test = [(1, info[0].duration, info[0].gpm, info[0].xpm, info[0].kpm) for info in test]
         y_test = [1 if info[1] else 0 for info in test]
 
-        logistic_regressor = linear_model.LogisticRegression(C=1.0, fit_intercept=False)
-        logistic_regressor.fit(X_train, y_train)
-
-        predictions = logistic_regressor.predict(X_test)
         LOGGER.horizontal_rule()
         LOGGER.info("Logistics regression")
+        logistic_regressor = linear_model.LogisticRegression(C=1.0, fit_intercept=False)
+        logistic_regressor.fit(X_train, y_train)
+        LOGGER.info("Coefficients: %s" % logistic_regressor.coef_)
+
+        predictions = logistic_regressor.predict(X_test)
         results(y_test, predictions)
 
+        LOGGER.horizontal_rule()
+        LOGGER.info("RandomForestClassifier")
         rfc = RandomForestClassifier(n_estimators = 50, n_jobs = 4)
         rfc.fit(X_train, y_train)
 
         predictions = rfc.predict(X_test)
-        LOGGER.horizontal_rule()
-        LOGGER.info("RandomForestClassifier")
         results(y_test, predictions)
 
 
