@@ -79,6 +79,30 @@ class PerMinutePredictor(object):
         durations = [info[0].duration for info in self.differenceInfos]
         LOGGER.info("Match duration: Mean: %f, StdDev: %f" % (numpy.mean(durations), numpy.std(durations)) )
 
+        radiant_anomaly = [0, 0, 0]
+        dire_anomaly = [0, 0, 0]
+        for info in self.differenceInfos:
+            if info[0].gpm < 0 and info[1]:
+                radiant_anomaly[0] += 1
+            elif info[0].gpm > 0 and not info[1]:
+                dire_anomaly[0] += 1
+            if info[0].xpm < 0 and info[1]:
+                radiant_anomaly[1] += 1
+            elif info[0].xpm > 0 and not info[1]:
+                dire_anomaly[1] += 1
+            if info[0].kpm < 0 and info[1]:
+                radiant_anomaly[2] += 1
+            elif info[0].kpm > 0 and not info[1]:
+                dire_anomaly[2] += 1
+
+        LOGGER.info("Radiant negative-gpm wins: %d, Percentage: %f" % (radiant_anomaly[0], radiant_anomaly[0] / self.total_games))
+        LOGGER.info("Radiant negative-xpm wins: %d, Percentage: %f" % (radiant_anomaly[1], radiant_anomaly[1] / self.total_games))
+        LOGGER.info("Radiant negative-kpm wins: %d, Percentage: %f" % (radiant_anomaly[2], radiant_anomaly[2] / self.total_games))
+
+        LOGGER.info("Dire negative-gpm wins: %d, Percentage: %f" % (dire_anomaly[0], dire_anomaly[0] / self.total_games))
+        LOGGER.info("Dire negative-xpm wins: %d, Percentage: %f" % (dire_anomaly[1], dire_anomaly[1] / self.total_games))
+        LOGGER.info("Dire negative-kpm wins: %d, Percentage: %f" % (dire_anomaly[2], dire_anomaly[2] / self.total_games))
+
         radiant_gpms = [info.gpm for info in self.radiantINfos]
         LOGGER.info("Radiant gpm: Mean: %f, StdDev:%f" % (numpy.mean(radiant_gpms), numpy.std(radiant_gpms)) )
         dire_gpms = [info.gpm for info in self.direInfos]
