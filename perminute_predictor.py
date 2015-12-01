@@ -34,7 +34,27 @@ class PerMinutePredictor(object):
         self.count()
         self.stats()
         self.plot()
-        self.predict()
+        LOGGER.horizontal_rule()
+        LOGGER.info("GPM prediction")
+        self.predict(lambda info: (1, info.duration, info.gpm))
+        LOGGER.horizontal_rule()
+        LOGGER.info("XPM prediction")
+        self.predict(lambda info: (1, info.duration, info.xpm))
+        LOGGER.horizontal_rule()
+        LOGGER.info("KPM prediction")
+        self.predict(lambda info: (1, info.duration, info.kpm))
+        LOGGER.horizontal_rule()
+        LOGGER.info("GPM, XPM prediction")
+        self.predict(lambda info: (1, info.duration, info.gpm, info.xpm))
+        LOGGER.horizontal_rule()
+        LOGGER.info("GPM, KPM prediction")
+        self.predict(lambda info: (1, info.duration, info.gpm, info.kpm))
+        LOGGER.horizontal_rule()
+        LOGGER.info("XPM, KPM prediction")
+        self.predict(lambda info: (1, info.duration, info.xpm, info.kpm))
+        LOGGER.horizontal_rule()
+        LOGGER.info("GPM, XPM, KPM prediction")
+        self.predict(lambda info: (1, info.duration, info.gpm, info.xpm, info.kpm))
 
     def count(self):
         LOGGER.horizontal_rule()
@@ -124,14 +144,16 @@ class PerMinutePredictor(object):
 
             Xs = [(x,) for x in xs]
             clf = linear_model.LogisticRegression().fit(Xs, ys)
-            sparse_xs = numpy.sort(numpy.array(xs)[0:-1:1000])
-            sparse_ys = [1/ (1 + numpy.exp(-(clf.intercept_[0] + clf.coef_[0][0] * x))) for x in sparse_xs] 
+            sparse_xs = numpy.array(xs)[0:-1:1000]
+            sparse_ys = numpy.array(ys)[0:-1:1000]
+            sparse_sorted_xs = numpy.sort(sparse_xs)
+            sparse_log_ys = [1/ (1 + numpy.exp(-(clf.intercept_[0] + clf.coef_[0][0] * x))) for x in sparse_xs] 
 
             figure = plt.figure(figsize=(10,10))
             plt.subplots_adjust(top=0.85)
             plt.ylim(-0.1,1.1)
-            plt.scatter(xs, ys, marker='.')
-            plt.plot(sparse_xs, sparse_ys, linewidth = 1)
+            plt.scatter(sparse_xs, sparse_ys, marker='.')
+            plt.plot(sparse_sorted_xs, sparse_log_ys, linewidth = 1)
             plt.savefig(savename + '.' + MATPLOT_EXTENSION)
             figure.clf()
             
@@ -149,7 +171,7 @@ class PerMinutePredictor(object):
 
         LOGGER.debug("Done plotting.")
 
-    def predict(self):
+    def predict(self, feature_func):
         def results(y_test, predictions):
             accuracy = 0
             for y,prediction in zip(y_test, predictions):
@@ -160,7 +182,6 @@ class PerMinutePredictor(object):
             accuracy = accuracy / len(y_test)
             LOGGER.info("Accuracy: %f" % accuracy)
 
-        LOGGER.horizontal_rule()
         train_size = round(len(self.differenceInfos) * 0.50)
         validation_size = round(len(self.differenceInfos) * 0.25)
 
@@ -171,13 +192,13 @@ class PerMinutePredictor(object):
         validation = self.differenceInfos[train_size:train_size+validation_size]
         test = self.differenceInfos[train_size+validation_size:]
        
-        X_train = [(1, info[0].duration, info[0].gpm, info[0].xpm, info[0].kpm) for info in train]
+        X_train = [feature_func(info[0]) for info in train]
         y_train = [1 if info[1] else 0 for info in train]
 
-        X_validation = [(1, info[0].duration, info[0].gpm, info[0].xpm, info[0].kpm) for info in validation]
+        X_validation = [feature_func(info[0]) for info in validation]
         y_validation = [1 if info[1] else 0 for info in validation]
 
-        X_test = [(1, info[0].duration, info[0].gpm, info[0].xpm, info[0].kpm) for info in test]
+        X_test = [feature_func(info[0]) for info in test]
         y_test = [1 if info[1] else 0 for info in test]
 
         LOGGER.horizontal_rule()
@@ -193,6 +214,7 @@ class PerMinutePredictor(object):
         LOGGER.info("RandomForestClassifier")
         rfc = RandomForestClassifier(n_estimators = 50, n_jobs = 4)
         rfc.fit(X_train, y_train)
+        LOGGER.info("Feature Importances: %s" % rfc.feature_importances_)
 
         predictions = rfc.predict(X_test)
         results(y_test, predictions)
